@@ -1,0 +1,887 @@
+<!doctype html>
+
+<html lang="zh-Hant">
+
+<head>
+
+<meta charset="utf-8" />
+
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+
+<title>Tabata Canvas 計時器</title>
+
+<style>
+
+  :root { --bg:#0f172a; --card:#111827; --muted:#9ca3af; --accent:#38bdf8; --success:#34d399; --rest:#60a5fa; --danger:#f87171; --prepare:#fbbf24; }
+
+  html,body{height:100%;margin:0;background:var(--bg);color:#e5e7eb;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",sans-serif;}
+
+  .wrap{max-width:940px;margin:0 auto;padding:16px 16px 28px;}
+
+  h1{margin:8px 0 14px;font-size:22px;letter-spacing:.02em}
+
+  .grid{display:grid;gap:12px;grid-template-columns:1fr}
+
+  @media (min-width:880px){ .grid{grid-template-columns:420px 1fr;align-items:start} }
+
+  .panel{background:var(--card);border-radius:14px;padding:14px 14px 18px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 6px}
+
+  input[type="number"],input[type="text"]{
+
+    width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2937;color:#e5e7eb;border-radius:10px;padding:10px 12px;font-size:16px;outline:none
+
+  }
+
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+
+  button{
+
+    appearance:none;border:0;border-radius:10px;padding:10px 14px;font-size:15px;cursor:pointer;color:#0b1220;background:var(--accent);
+
+  }
+
+  button.secondary{background:#e5e7eb;color:#0b1220}
+
+  button.warn{background:var(--danger);color:white}
+
+  .muted{color:var(--muted);font-size:13px;margin-top:8px}
+
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+
+  .pill{font-size:12px;padding:4px 8px;border-radius:999px;background:#0b1220;border:1px solid #1f2937;color:#cbd5e1}
+
+  canvas{display:block;width:100%;height:auto}
+
+  .phaseBadge{display:inline-block;font-size:12px;padding:3px 8px;border-radius:999px;margin-left:8px}
+
+  .badge-work{background:rgba(52,211,153,.15);color:#a7f3d0;border:1px solid rgba(52,211,153,.35)}
+
+  .badge-rest{background:rgba(96,165,250,.15);color:#bfdbfe;border:1px solid rgba(96,165,250,.35)}
+
+  .badge-prepare{background:rgba(251,191,36,.15);color:#fde68a;border:1px solid rgba(251,191,36,.35)}
+
+  .footer{opacity:.7;font-size:12px;margin-top:18px}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="wrap">
+
+  <h1>Tabata 計時器（Canvas）<span id="phaseBadge" class="phaseBadge badge-work" style="display:none">WORK</span></h1>
+
+  <div class="grid">
+
+    <!-- Canvas 面板 -->
+
+    <div class="panel">
+
+      <canvas id="dial" width="480" height="480" aria-label="Tabata Progress"></canvas>
+
+      <div class="legend">
+
+        <span class="pill">長按或點擊「暫停」可靜音切換</span>
+
+        <span class="pill">最後 3 秒會嗶聲提示</span>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- 控制面板 -->
+
+    <div class="panel">
+
+      <label for="title">訓練名稱</label>
+
+      <input id="title" type="text" placeholder="例如：TABATA 核心訓練" />
+
+
+
+      <div class="row">
+
+        <div>
+
+          <label for="work">工作（秒）</label>
+
+          <input id="work" type="number" min="1" value="20" />
+
+        </div>
+
+        <div>
+
+          <label for="rest">休息（秒）</label>
+
+          <input id="rest" type="number" min="0" value="10" />
+
+        </div>
+
+      </div>
+
+
+
+      <div class="row">
+
+        <div>
+
+          <label for="rounds">組數（回合）</label>
+
+          <input id="rounds" type="number" min="1" value="8" />
+
+        </div>
+
+        <div>
+
+          <label for="mute">提示音</label>
+
+          <input id="mute" type="text" value="開啟" readonly style="cursor:default;user-select:none" />
+
+        </div>
+
+      </div>
+
+
+
+      <div class="btns">
+
+        <button id="start">開始</button>
+
+        <button id="pause" class="secondary">暫停</button>
+
+        <button id="reset" class="warn">重設</button>
+
+      </div>
+
+
+
+      <div class="muted" id="meta">尚未開始</div>
+
+      <div class="footer">⚠️ iOS/Android 上若沒聲音，先點「開始」授權音訊後就會生效。</div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+
+<script>
+
+(() => {
+
+  // ====== DOM ======
+
+  const canvas = document.getElementById('dial');
+
+  const ctx = canvas.getContext('2d');
+
+  const titleEl = document.getElementById('title');
+
+  const workEl = document.getElementById('work');
+
+  const restEl = document.getElementById('rest');
+
+  const roundsEl = document.getElementById('rounds');
+
+  const metaEl = document.getElementById('meta');
+
+  const phaseBadge = document.getElementById('phaseBadge');
+
+  const btnStart = document.getElementById('start');
+
+  const btnPause = document.getElementById('pause');
+
+  const btnReset = document.getElementById('reset');
+
+  const muteEl = document.getElementById('mute');
+
+
+
+  // ====== 音效（Web Audio，無需檔案） ======
+
+  let audioCtx = null;
+
+  let muted = false;
+
+  function ensureAudio() {
+
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  }
+
+  function beep(ms = 120, freq = 880, type = 'sine', gain = 0.05) {
+
+    if (muted) return;
+
+    ensureAudio();
+
+    const t0 = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+
+    const g = audioCtx.createGain();
+
+    osc.type = type;
+
+    osc.frequency.setValueAtTime(freq, t0);
+
+    g.gain.setValueAtTime(gain, t0);
+
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + ms / 1000);
+
+    osc.connect(g).connect(audioCtx.destination);
+
+    osc.start(t0);
+
+    osc.stop(t0 + ms / 1000 + 0.02);
+
+  }
+
+  function tripleBeepCountdown(sec) { // 3,2,1 短嗶
+
+    if (sec <= 3 && sec > 0) beep(100, 880);
+
+  }
+
+  function phaseChangeBeep(nextPhase) { // 轉場提示
+
+    if (nextPhase === 'work') { beep(180, 1200, 'square', 0.07); }
+
+    else if (nextPhase === 'rest') { beep(180, 600, 'triangle', 0.06); }
+
+    else if (nextPhase === 'prepare') { beep(180, 1000, 'sine', 0.06); }
+
+  }
+
+
+
+  // ====== 狀態 ======
+
+  const STATE = {
+
+    title: '',
+
+    workMs: 20000,
+
+    restMs: 10000,
+
+    rounds: 8,
+
+    phase: 'idle',      // idle | prepare | work | rest | done
+
+    roundIdx: 0,        // 0-based
+
+    running: false,
+
+    durationMs: 0,
+
+    remainMs: 0,
+
+    lastTick: 0,
+
+    lastWholeSec: null
+
+  };
+
+
+
+  // ====== 儲存 / 載入設定 ======
+
+  const LS_KEY = 'tabata_canvas_prefs_v1';
+
+  function loadPrefs() {
+
+    try {
+
+      const raw = localStorage.getItem(LS_KEY);
+
+      if (!raw) return;
+
+      const p = JSON.parse(raw);
+
+      if (p.title) titleEl.value = p.title;
+
+      if (p.work)  workEl.value  = p.work;
+
+      if (p.rest)  restEl.value  = p.rest;
+
+      if (p.rounds)roundsEl.value= p.rounds;
+
+    } catch(e){}
+
+  }
+
+  function savePrefs() {
+
+    const payload = {
+
+      title: titleEl.value.trim(),
+
+      work:  +workEl.value || 20,
+
+      rest:  +restEl.value || 10,
+
+      rounds:+roundsEl.value || 8
+
+    };
+
+    localStorage.setItem(LS_KEY, JSON.stringify(payload));
+
+  }
+
+  ['input','change'].forEach(evt=>{
+
+    titleEl.addEventListener(evt, savePrefs);
+
+    workEl.addEventListener(evt, savePrefs);
+
+    restEl.addEventListener(evt, savePrefs);
+
+    roundsEl.addEventListener(evt, savePrefs);
+
+  });
+
+
+
+  // ====== 畫面 ======
+
+  function resizeCanvas() {
+
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+    const side = Math.min(520, Math.floor(canvas.clientWidth || canvas.parentElement.clientWidth || 480));
+
+    canvas.width = side * dpr;
+
+    canvas.height = side * dpr;
+
+    canvas.style.height = side + 'px';
+
+    canvas.style.width = side + 'px';
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    draw();
+
+  }
+
+
+
+  function formatMMSS(ms) {
+
+    ms = Math.max(0, ms|0);
+
+    const s = Math.ceil(ms/1000);
+
+    const mPart = Math.floor(s/60);
+
+    const sPart = s % 60;
+
+    return `${String(mPart).padStart(2,'0')}:${String(sPart).padStart(2,'0')}`;
+
+  }
+
+
+
+  function draw() {
+
+    const w = canvas.width / (window.devicePixelRatio ? Math.min(2, window.devicePixelRatio) : 1);
+
+    const h = canvas.height / (window.devicePixelRatio ? Math.min(2, window.devicePixelRatio) : 1);
+
+    const cx = w/2, cy = h/2;
+
+    const rOuter = Math.min(w,h)/2 - 16;
+
+    const rRing  = rOuter - 10;
+
+
+
+    ctx.clearRect(0,0,w,h);
+
+
+
+    // 背景圓
+
+    ctx.beginPath();
+
+    ctx.arc(cx, cy, rRing, 0, Math.PI*2);
+
+    ctx.strokeStyle = '#1f2937';
+
+    ctx.lineWidth = 18;
+
+    ctx.lineCap = 'round';
+
+    ctx.stroke();
+
+
+
+    // 進度環
+
+    let ringColor;
+
+    let glowColor;
+
+    const isWork = STATE.phase === 'work';
+
+    const isRest = STATE.phase === 'rest';
+
+    const isPrepare = STATE.phase === 'prepare';
+
+    if (isWork) {
+
+      ringColor = '#34d399';
+
+      glowColor = 'rgba(52,211,153,0.15)';
+
+    } else if (isRest) {
+
+      ringColor = '#60a5fa';
+
+      glowColor = 'rgba(96,165,250,0.15)';
+
+    } else if (isPrepare) {
+
+      ringColor = '#fbbf24';
+
+      glowColor = 'rgba(251,191,36,0.15)';
+
+    } else {
+
+      ringColor = '#1f2937';
+
+      glowColor = 'rgba(56,189,248,0)';
+
+    }
+
+    const progress = STATE.durationMs > 0 ? (STATE.durationMs - STATE.remainMs) / STATE.durationMs : 0;
+
+    ctx.beginPath();
+
+    const startAng = -Math.PI/2;
+
+    const endAng = startAng + Math.PI*2 * Math.max(0, Math.min(1, progress));
+
+    ctx.arc(cx, cy, rRing, startAng, endAng);
+
+    ctx.strokeStyle = ringColor;
+
+    ctx.lineWidth = 18;
+
+    ctx.stroke();
+
+
+
+    // 外圈淡光
+
+    ctx.beginPath();
+
+    ctx.arc(cx, cy, rOuter, 0, Math.PI*2);
+
+    const grad = ctx.createRadialGradient(cx, cy, rRing, cx, cy, rOuter);
+
+    grad.addColorStop(0, 'rgba(56,189,248,0)');
+
+    grad.addColorStop(1, glowColor);
+
+    ctx.fillStyle = grad;
+
+    ctx.fill();
+
+
+
+    // 中央文字
+
+    ctx.textAlign = 'center';
+
+    ctx.fillStyle = '#e5e7eb';
+
+
+
+    // 訓練名稱
+
+    ctx.font = '16px system-ui, -apple-system, Segoe UI, Roboto';
+
+    const title = STATE.title || 'TABATA';
+
+    ctx.fillText(title, cx, cy - 48);
+
+
+
+    // 時間
+
+    ctx.font = '72px system-ui, -apple-system, Segoe UI, Roboto';
+
+    const t = STATE.phase === 'idle' ? '--:--'
+
+            : STATE.phase === 'done' ? '完成'
+
+            : formatMMSS(STATE.remainMs);
+
+    ctx.fillText(t, cx, cy + 10);
+
+
+
+    // 狀態 / 組數
+
+    ctx.font = '15px system-ui, -apple-system, Segoe UI, Roboto';
+
+    let sub = '';
+
+    if (STATE.phase === 'idle') sub = '按「開始」開始訓練';
+
+    else if (STATE.phase === 'done') sub = '做得好！按「重設」再來一次';
+
+    else if (STATE.phase === 'prepare') sub = '準備｜倒數';
+
+    else {
+
+      const name = isWork ? 'WORK' : 'REST';
+
+      sub = `${name}｜第 ${STATE.roundIdx+1} / ${STATE.rounds} 組`;
+
+    }
+
+    ctx.fillStyle = '#9ca3af';
+
+    ctx.fillText(sub, cx, cy + 42);
+
+  }
+
+
+
+  // ====== 流程 ======
+
+  function toPhase(phase, setDurationMs) {
+
+    STATE.phase = phase;
+
+    STATE.durationMs = setDurationMs;
+
+    STATE.remainMs = setDurationMs;
+
+    STATE.lastWholeSec = null;
+
+    phaseBadge.style.display = (phase==='work' || phase==='rest' || phase==='prepare') ? '' : 'none';
+
+    phaseBadge.textContent = phase === 'work' ? 'WORK' : phase === 'rest' ? 'REST' : 'PREPARE';
+
+    phaseBadge.className = 'phaseBadge ' + (phase==='work' ? 'badge-work' : phase==='rest' ? 'badge-rest' : 'badge-prepare');
+
+    phaseChangeBeep(phase);
+
+    draw();
+
+  }
+
+
+
+  function startSession() {
+
+    // 讀取設定
+
+    STATE.title  = titleEl.value.trim();
+
+    STATE.workMs = Math.max(1, (+workEl.value||20)) * 1000;
+
+    STATE.restMs = Math.max(0, (+restEl.value||10)) * 1000;
+
+    STATE.rounds = Math.max(1, (+roundsEl.value||8))|0;
+
+
+
+    STATE.roundIdx = 0;
+
+    toPhase('prepare', 5000);
+
+    STATE.running = true;
+
+    STATE.lastTick = performance.now();
+
+    metaEl.textContent = `進行中：${STATE.title || 'TABATA'}（${Math.round(STATE.workMs/1000)}s / ${Math.round(STATE.restMs/1000)}s × ${STATE.rounds}）`;
+
+    tick();
+
+  }
+
+
+
+  function endSession() {
+
+    STATE.running = false;
+
+    STATE.phase = 'done';
+
+    draw();
+
+    metaEl.textContent = '完成！恭喜你完成所有組數 🎉';
+
+    beep(220, 1000, 'square', 0.09);
+
+    setTimeout(()=>beep(180, 750, 'square', 0.08), 240);
+
+  }
+
+
+
+  function nextPhase() {
+
+    if (STATE.phase === 'prepare') {
+
+      toPhase('work', STATE.workMs);
+
+    } else if (STATE.phase === 'work') {
+
+      if (STATE.roundIdx + 1 >= STATE.rounds) {
+
+        endSession();
+
+      } else {
+
+        if (STATE.restMs > 0) {
+
+          toPhase('rest', STATE.restMs);
+
+        } else {
+
+          STATE.roundIdx++;
+
+          toPhase('work', STATE.workMs);
+
+        }
+
+      }
+
+    } else if (STATE.phase === 'rest') {
+
+      STATE.roundIdx++;
+
+      if (STATE.roundIdx >= STATE.rounds) endSession();
+
+      else toPhase('work', STATE.workMs);
+
+    }
+
+  }
+
+
+
+  function tick(now) {
+
+    if (!STATE.running) return;
+
+    const t = now || performance.now();
+
+    const dt = t - STATE.lastTick;
+
+    STATE.lastTick = t;
+
+
+
+    if (['work', 'rest', 'prepare'].includes(STATE.phase)) {
+
+      STATE.remainMs -= dt;
+
+      // 倒數提示嗶聲（整秒邊界）
+
+      const currWhole = Math.ceil(Math.max(0, STATE.remainMs)/1000);
+
+      if (STATE.lastWholeSec !== currWhole) {
+
+        STATE.lastWholeSec = currWhole;
+
+        tripleBeepCountdown(currWhole);
+
+      }
+
+      if (STATE.remainMs <= 0) {
+
+        nextPhase();
+
+      }
+
+    }
+
+
+
+    draw();
+
+    requestAnimationFrame(tick);
+
+  }
+
+
+
+  // ====== 控制 ======
+
+  btnStart.addEventListener('click', () => {
+
+    ensureAudio();
+
+    if (STATE.phase === 'idle' || STATE.phase === 'done') {
+
+      startSession();
+
+      btnPause.textContent = '暫停';
+
+    } else if (!STATE.running) {
+
+      STATE.running = true;
+
+      STATE.lastTick = performance.now();
+
+      metaEl.textContent = '繼續';
+
+      btnPause.textContent = '暫停';
+
+      tick();
+
+    }
+
+  });
+
+
+
+  btnPause.addEventListener('click', () => {
+
+    if (STATE.phase === 'idle' || STATE.phase === 'done') {
+
+      // 空白狀態下當成靜音切換
+
+      muted = !muted;
+
+      muteEl.value = muted ? '靜音' : '開啟';
+
+      return;
+
+    }
+
+    STATE.running = !STATE.running;
+
+    if (STATE.running) {
+
+      STATE.lastTick = performance.now();
+
+      btnPause.textContent = '暫停';
+
+      tick();
+
+    } else {
+
+      btnPause.textContent = '繼續';
+
+      metaEl.textContent = '已暫停；點「暫停/繼續」可以切換，長按可靜音';
+
+    }
+
+  });
+
+
+
+  // 長按「暫停」切換靜音
+
+  let pressTimer=null;
+
+  btnPause.addEventListener('mousedown', ()=> {
+
+    pressTimer = setTimeout(()=>{
+
+      muted = !muted;
+
+      muteEl.value = muted ? '靜音' : '開啟';
+
+      beep(80, muted ? 400 : 1000);
+
+    }, 550);
+
+  });
+
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(ev=>{
+
+    btnPause.addEventListener(ev, ()=> pressTimer && clearTimeout(pressTimer));
+
+  });
+
+
+
+  btnReset.addEventListener('click', () => {
+
+    STATE.running = false;
+
+    STATE.phase = 'idle';
+
+    STATE.roundIdx = 0;
+
+    STATE.durationMs = 0;
+
+    STATE.remainMs = 0;
+
+    STATE.lastWholeSec = null;
+
+    phaseBadge.style.display = 'none';
+
+    metaEl.textContent = '已重設';
+
+    draw();
+
+  });
+
+
+
+  // 點擊靜音欄也可切換
+
+  muteEl.addEventListener('click', ()=>{
+
+    muted = !muted; muteEl.value = muted ? '靜音' : '開啟';
+
+    if (!muted) beep(80, 1000);
+
+  });
+
+
+
+  // 載入、縮放
+
+  window.addEventListener('resize', resizeCanvas, {passive:true});
+
+  loadPrefs();
+
+  // 初始畫面
+
+  function initCanvasSizeOnce(){
+
+    // 以容器實寬設定 Canvas 尺寸
+
+    const parent = canvas.parentElement;
+
+    const width = parent.getBoundingClientRect().width;
+
+    canvas.style.width = width+'px';
+
+    canvas.style.height = width+'px';
+
+    resizeCanvas();
+
+  }
+
+  initCanvasSizeOnce();
+
+})();
+
+</script>
+
+</body>
+
+</html>
